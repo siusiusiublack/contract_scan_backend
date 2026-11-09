@@ -1,4 +1,4 @@
-from datetime import date, datetime
+import datetime as dt
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -11,7 +11,7 @@ class DocumentStub(BaseModel):
     uri: str
     title: str
     url: str
-    published: date | None = None
+    published: dt.date | None = None
     summary: str | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
 
@@ -20,7 +20,7 @@ class RawDocument(BaseModel):
     stub: DocumentStub
     content_type: str
     body: str
-    fetched_at: datetime
+    fetched_at: dt.datetime
 
 
 class CleanDocument(BaseModel):
@@ -28,7 +28,8 @@ class CleanDocument(BaseModel):
     source: str
     title: str
     court: str | None = None
-    date: date | None = None
+    # Field name "date" must not shadow datetime.date in annotations.
+    date: dt.date | None = None
     url: str
     practice_area: list[str] = Field(default_factory=list)
     text: str
@@ -36,5 +37,5 @@ class CleanDocument(BaseModel):
     license_note: str
     raw_path: str | None = None
     clean_path: str | None = None
-    fetched_at: datetime
+    fetched_at: dt.datetime
     neutral_citation: str | None = None

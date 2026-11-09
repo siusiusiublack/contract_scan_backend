@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+import datetime as dt
+from datetime import timezone
 
 from judgment_ingest.config import Settings
 from judgment_ingest.models import CleanDocument
@@ -15,7 +16,7 @@ def _doc(url: str, content_hash: str) -> CleanDocument:
         text="hello",
         content_hash=content_hash,
         license_note="test",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=dt.datetime.now(timezone.utc),
         practice_area=["housing"],
     )
 

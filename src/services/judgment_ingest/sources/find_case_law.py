@@ -10,7 +10,8 @@ from __future__ import annotations
 import hashlib
 import re
 import xml.etree.ElementTree as ET
-from datetime import date, datetime, timezone
+import datetime as dt
+from datetime import timezone
 from urllib.parse import urljoin
 
 import httpx
@@ -68,7 +69,7 @@ class FindCaseLawAdapter:
                 stub=stub,
                 content_type=response.headers.get("content-type", "application/xml"),
                 body=response.text,
-                fetched_at=datetime.now(timezone.utc),
+                fetched_at=dt.datetime.now(timezone.utc),
             )
         finally:
             if owns_client:
@@ -147,11 +148,11 @@ def _uri_from_id_or_link(entry_id: str, link: str | None) -> str:
     return (entry_id or link or "unknown").strip("/")
 
 
-def _parse_date(value: str | None) -> date | None:
+def _parse_date(value: str | None) -> dt.date | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+        return dt.datetime.fromisoformat(value.replace("Z", "+00:00")).date()
     except ValueError:
         return None
 
