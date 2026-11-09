@@ -10,12 +10,15 @@ build/
 venv/
 .env
 
-# EL-T landing zone artefacts (keep directory placeholders)
+# EL-T landing zone artefacts — keep directory placeholders via .gitkeep
 data/1_raw/**
-data/2_processed/**
-data/3_db/**
+!data/1_raw/**/
 !data/1_raw/**/.gitkeep
+data/2_processed/**
+!data/2_processed/**/
 !data/2_processed/**/.gitkeep
+data/3_db/**
+!data/3_db/
 !data/3_db/.gitkeep
 
 # Legacy paths (if any remain locally)
