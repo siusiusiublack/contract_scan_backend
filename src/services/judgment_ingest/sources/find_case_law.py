@@ -8,7 +8,6 @@ Public endpoints (see TNA docs):
 from __future__ import annotations
 
 import hashlib
-import re
 import xml.etree.ElementTree as ET
 import datetime as dt
 from datetime import timezone
@@ -25,6 +24,9 @@ ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 
 class FindCaseLawAdapter:
     source_id = "fcl"
+    # Official Atom/XML API — not HTML scraping.
+    transport = "atom_api"
+    default_min_interval_s = 1.0
 
     def __init__(self, settings: Settings, client: httpx.Client | None = None) -> None:
         self.settings = settings
@@ -101,15 +103,24 @@ class FindCaseLawAdapter:
             if len(stubs) >= limit:
                 break
             title = _atom_text(entry.find("atom:title", ATOM_NS)) or "Untitled"
-            entry_id = _atom_text(entry.find("atom:id", ATOM_NS)) or ""
-            link = _best_link(entry)
+            page_url = _page_link(entry)
+            data_url = _data_xml_link(entry)
             published = _parse_date(
                 _atom_text(entry.find("atom:published", ATOM_NS))
                 or _atom_text(entry.find("atom:updated", ATOM_NS))
             )
             summary = _atom_text(entry.find("atom:summary", ATOM_NS))
-            uri = _uri_from_id_or_link(entry_id, link)
-            url = link or urljoin(self.settings.fcl_base_url + "/", uri)
+            slug = _slug_from_identifiers(entry) or _path_from_caselaw_url(page_url)
+            if not slug and data_url:
+                slug = _path_from_caselaw_url(data_url.replace("/data.xml", ""))
+            uri = slug or "unknown"
+            url = page_url or urljoin(self.settings.fcl_base_url + "/", uri)
+            if data_url and "caselaw.nationalarchives.gov.uk/" in data_url:
+                data_path = "/" + data_url.split("caselaw.nationalarchives.gov.uk/", 1)[
+                    1
+                ].strip("/")
+            else:
+                data_path = f"/{uri.strip('/')}/data.xml"
             stubs.append(
                 DocumentStub(
                     source=self.source_id,
@@ -118,7 +129,10 @@ class FindCaseLawAdapter:
                     url=url,
                     published=published,
                     summary=summary,
-                    extra={"data_path": f"/{uri.strip('/')}/data.xml" if uri else None},
+                    extra={
+                        "data_path": data_path,
+                        "neutral_citation": _neutral_citation(entry),
+                    },
                 )
             )
         return stubs
@@ -130,22 +144,60 @@ def _atom_text(el: ET.Element | None) -> str | None:
     return (el.text or "").strip() or None
 
 
-def _best_link(entry: ET.Element) -> str | None:
+def _page_link(entry: ET.Element) -> str | None:
+    """Human judgment page URL (not PDF / not data.xml)."""
     for link in entry.findall("atom:link", ATOM_NS):
-        href = link.attrib.get("href")
-        if href:
+        href = link.attrib.get("href") or ""
+        typ = link.attrib.get("type") or ""
+        if not href or "caselaw.nationalarchives.gov.uk" not in href:
+            continue
+        if href.endswith("/data.xml") or typ == "application/akn+xml":
+            continue
+        if typ == "application/pdf" or href.endswith(".pdf"):
+            continue
+        if "/id/" in href:
+            continue
+        return href
+    return None
+
+
+def _data_xml_link(entry: ET.Element) -> str | None:
+    for link in entry.findall("atom:link", ATOM_NS):
+        href = link.attrib.get("href") or ""
+        typ = link.attrib.get("type") or ""
+        if href.endswith("/data.xml") or typ == "application/akn+xml":
             return href
     return None
 
 
-def _uri_from_id_or_link(entry_id: str, link: str | None) -> str:
-    # Atom id often looks like tag:... or a URL; prefer path-like segment
-    for candidate in (entry_id, link or ""):
-        if "caselaw.nationalarchives.gov.uk/" in candidate:
-            return candidate.split("caselaw.nationalarchives.gov.uk/", 1)[1].strip("/")
-        if re.match(r"^[a-z0-9_./-]+$", candidate, re.I) and "/" in candidate:
-            return candidate.strip("/")
-    return (entry_id or link or "unknown").strip("/")
+def _slug_from_identifiers(entry: ET.Element) -> str | None:
+    # Prefer human slug e.g. ewhc/bp/2026/2634 over machine d-uuid
+    for el in entry.findall("tna:identifier", {"tna": "https://caselaw.nationalarchives.gov.uk"}):
+        slug = el.attrib.get("slug")
+        typ = el.attrib.get("type")
+        if slug and typ == "ukncn":
+            return slug.strip("/")
+    for el in entry.findall("tna:identifier", {"tna": "https://caselaw.nationalarchives.gov.uk"}):
+        slug = el.attrib.get("slug")
+        if slug and not slug.startswith("tna."):
+            return slug.strip("/")
+    return None
+
+
+def _neutral_citation(entry: ET.Element) -> str | None:
+    for el in entry.findall("tna:identifier", {"tna": "https://caselaw.nationalarchives.gov.uk"}):
+        if el.attrib.get("type") == "ukncn" and (el.text or "").strip():
+            return el.text.strip()
+    return None
+
+
+def _path_from_caselaw_url(url: str | None) -> str | None:
+    if not url or "caselaw.nationalarchives.gov.uk/" not in url:
+        return None
+    path = url.split("caselaw.nationalarchives.gov.uk/", 1)[1].strip("/")
+    if path.startswith("id/"):
+        return None
+    return path
 
 
 def _parse_date(value: str | None) -> dt.date | None:

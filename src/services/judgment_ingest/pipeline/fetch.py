@@ -1,4 +1,4 @@
-"""HTTP fetch helpers: rate limit, retry, 429 backoff."""
+"""HTTP fetch helpers: rate limit, retry, 429 backoff (observe, do not probe)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,14 @@ from typing import TypeVar
 import httpx
 
 T = TypeVar("T")
+
+
+class RateLimitedError(RuntimeError):
+    """Raised after repeated HTTP 429s — stop the source run; do not ramp QPS."""
+
+    def __init__(self, message: str, *, status_code: int = 429) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class RateLimiter:
@@ -32,6 +40,7 @@ def with_retries(
     rate_limiter: RateLimiter | None = None,
 ) -> T:
     last_error: Exception | None = None
+    saw_429 = False
     for attempt in range(retries):
         if rate_limiter:
             rate_limiter.wait()
@@ -40,6 +49,7 @@ def with_retries(
         except httpx.HTTPStatusError as exc:
             last_error = exc
             if exc.response.status_code == 429:
+                saw_429 = True
                 time.sleep(2**attempt)
                 continue
             if exc.response.status_code >= 500:
@@ -50,4 +60,9 @@ def with_retries(
             last_error = exc
             time.sleep(2**attempt)
     assert last_error is not None
+    if saw_429:
+        raise RateLimitedError(
+            "HTTP 429 rate limited after retries — increase the source interval "
+            "or reduce --limit. Do not probe harder to discover limits."
+        ) from last_error
     raise last_error

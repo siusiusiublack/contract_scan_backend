@@ -6,24 +6,32 @@ Multi-service Python monorepo for a UK **contract-risk** product (AST / tenancy 
 
 | Category | Service | Status |
 | :--- | :--- | :--- |
-| **Data pipeline** | `judgment_ingest` | v0 scaffold — Find Case Law → raw/clean + DB |
+| **Data pipeline** | `judgment_ingest` | Find Case Law → EL-T land + SQLite |
 | Product (later) | `contract_scanner` | Planned — AST risk checklist |
-| Product (later) | `api` | Planned — FastAPI demo surface |
-| Workers (later) | `rag_worker` | Planned — chunk / embed / cite |
+| Product (later) | `api` | Planned — FastAPI thin trigger |
+| Enrich (later) | `judgment_ingest/enrich` | PII redaction / embeddings when coded |
 
 Only create a new folder under `src/services/` when that service has real code.
 
-## Layout
+## Layout (merged EL-T + multi-service)
 
 ```text
+data/
+  1_raw/<source>/          # Extract → Load RAW (immutable)
+  2_processed/<source>/    # Transform output (JSON/txt)
+  3_db/                    # Local SQLite (later Postgres/pgvector)
+
 src/services/
   judgment_ingest/
-    sources/      # Find Case Law adapter (extensible protocol)
-    pipeline/     # fetch → parse → normalize → dedupe
-    storage/      # raw/clean files + SQLite
-data/             # local artefacts (gitignored payloads)
-docs/             # architecture + licensing notes
+    sources/               # EXTRACT per publisher (FCL Atom, BAILII later)
+    pipeline/              # shared rate-limit, normalize, dedupe, run
+    storage/               # writes 1_raw + 2_processed + DB
+    enrich/                # later: PII / embed
+  # contract_scanner/      # later
+  # api/                   # later
 ```
+
+EL-T flow: **sources Extract → `1_raw` → parse/transform → `2_processed` → `3_db`**.
 
 ## Quick start
 
@@ -32,9 +40,13 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 judgment-ingest --help
+judgment-ingest sources
 judgment-ingest status
-# Later: judgment-ingest run --source fcl --limit 5
+judgment-ingest run --source fcl --limit 5 --dry-run
+judgment-ingest run --source fcl --limit 3
 ```
+
+Sources are pluggable via a registry (not limited to four publishers). See `docs/architecture.md`.
 
 ## Licensing note (Find Case Law)
 
